@@ -13,9 +13,9 @@ provider "aws" {
   
   default_tags {
     tags = {
-      Project   = "ImageProcessor"
+      Project   = "Procesador_imagenes"
       Environment = terraform.workspace
       Owner     = "TiagoTrigoso"
     }
   }
-}
+} 
