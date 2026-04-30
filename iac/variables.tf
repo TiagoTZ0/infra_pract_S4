@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "bucket_suffix" {
-  description = "Sufijo único para el bucket S3 (usa algo con tu nombre o matrícula)"
+  description = "Sufijo único para el bucket S3"
   type        = string
   default     = "tiago-trigoso-2006120113"
 }
