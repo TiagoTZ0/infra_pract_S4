@@ -1,5 +1,5 @@
-# VPC y Gateway
-resource "aws_vpc" "main" {
+## Red principal para Procesador de Imágenes
+resource "aws_vpc" "main" { # /16: suficiente para aislar subredes y escalar en laboratorio
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
@@ -12,7 +12,7 @@ resource "aws_internet_gateway" "igw" {
 }
 
 # Subredes Públicas
-resource "aws_subnet" "public_a" {
+resource "aws_subnet" "public_a" { # /24: separa tráfico público, facilita pruebas de NAT y balanceo
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "${var.aws_region}a"
@@ -20,7 +20,7 @@ resource "aws_subnet" "public_a" {
   tags = { Name = "subnet-pub-a-${terraform.workspace}" }
 }
 
-resource "aws_subnet" "public_b" {
+resource "aws_subnet" "public_b" { # Multi-AZ: tolerancia a fallos y despliegue realista
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.2.0/24"
   availability_zone       = "${var.aws_region}b"
@@ -29,30 +29,30 @@ resource "aws_subnet" "public_b" {
 }
 
 # Subredes Privadas
-resource "aws_subnet" "private_a" {
+resource "aws_subnet" "private_a" { # Subred privada: expone solo lo necesario, reduce superficie de ataque
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.11.0/24"
   availability_zone = "${var.aws_region}a"
   tags = { Name = "subnet-priv-a-${terraform.workspace}" }
 }
 
-resource "aws_subnet" "private_b" {
+resource "aws_subnet" "private_b" { # Replica para alta disponibilidad
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.12.0/24"
   availability_zone = "${var.aws_region}b"
   tags = { Name = "subnet-priv-b-${terraform.workspace}" }
 }
 
-# NAT Gateways y EIPs (¡ESTO ES LO QUE CUESTA DINERO!)
+# NAT Gateways y EIPs
 resource "aws_eip" "nat_a" { domain = "vpc" }
 resource "aws_eip" "nat_b" { domain = "vpc" }
 
-resource "aws_nat_gateway" "nat_a" {
+resource "aws_nat_gateway" "nat_a" { # NAT: permite a Lambdas salir a internet sin exponerlas
   allocation_id = aws_eip.nat_a.id
   subnet_id     = aws_subnet.public_a.id
 }
 
-resource "aws_nat_gateway" "nat_b" {
+resource "aws_nat_gateway" "nat_b" { # Costo: solo usar en pruebas cortas, es lo más caro del stack
   allocation_id = aws_eip.nat_b.id
   subnet_id     = aws_subnet.public_b.id
 }
@@ -101,7 +101,7 @@ resource "aws_route_table_association" "priv_b" {
 }
 
 # Endpoints (S3 Gateway y SQS Interface)
-resource "aws_vpc_endpoint" "s3" {
+resource "aws_vpc_endpoint" "s3" { # Endpoint privado: tráfico S3 nunca sale a internet, seguridad y ahorro
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
@@ -109,13 +109,13 @@ resource "aws_vpc_endpoint" "s3" {
 }
 
 resource "aws_security_group" "vpce_sqs" {
-  name   = "sg-vpce-sqs-${terraform.workspace}"
+  name   = "vpce-sqs-sg-${terraform.workspace}"
   vpc_id = aws_vpc.main.id
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"] # Permitir desde la VPC
+    cidr_blocks = ["10.0.0.0/16"] 
   }
 }
 

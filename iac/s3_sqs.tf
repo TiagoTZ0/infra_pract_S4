@@ -1,26 +1,27 @@
-# S3 Bucket
-resource "aws_s3_bucket" "images" {
+resource "aws_s3_bucket" "images" { 
+  # Habilita force_destroy para agilizar la limpieza de recursos en ciclos de laboratorio.
   bucket        = "image-processor-${terraform.workspace}-images-${var.bucket_suffix}"
-  force_destroy = true
+  force_destroy = true 
 }
 
-resource "aws_s3_bucket_versioning" "images" {
+resource "aws_s3_bucket_versioning" "images" { 
   bucket = aws_s3_bucket.images.id
   versioning_configuration {
-    status = "Enabled"
+    status = "Enabled" 
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "images" {
+resource "aws_s3_bucket_server_side_encryption_configuration" "images" { 
   bucket = aws_s3_bucket.images.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm = "AES256" 
     }
   }
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "images" {
+resource "aws_s3_bucket_lifecycle_configuration" "images" { 
+  # Implementa políticas de retención diferencial para optimizar costos de almacenamiento a largo plazo.
   bucket = aws_s3_bucket.images.id
   rule {
     id     = "expire-uploads"
@@ -29,7 +30,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "images" {
       prefix = "uploads/"
     }
     expiration {
-      days = 30
+      days = 30 
     }
   }
   rule {
@@ -39,43 +40,46 @@ resource "aws_s3_bucket_lifecycle_configuration" "images" {
       prefix = "processed/"
     }
     expiration {
-      days = 90
+      days = 90 
     }
   }
 }
 
-# SQS DLQ y Main
-resource "aws_sqs_queue" "dlq" {
+resource "aws_sqs_queue" "dlq" { 
+  # Garantiza la retención extendida de mensajes fallidos para permitir su análisis forense.
   name                      = "image-processor-${terraform.workspace}-dlq"
-  message_retention_seconds = 1209600
+  message_retention_seconds = 1209600 
 }
 
-resource "aws_sqs_queue" "main" {
+resource "aws_sqs_queue" "main" { 
+  # Configura visibilidad a 6x del timeout de la Lambda y políticas de DLQ para tolerancia a fallos.
   name                       = "image-processor-${terraform.workspace}-queue"
-  visibility_timeout_seconds = 360
+  visibility_timeout_seconds = 360 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
-    maxReceiveCount     = 3
+    maxReceiveCount     = 3 
   })
 }
 
-resource "aws_cloudwatch_log_group" "lambda_upload" {
+resource "aws_cloudwatch_log_group" "lambda_upload" { 
+  # Limita la retención de logs a 14 días para controlar costos operativos de observabilidad.
   name              = "/aws/lambda/upload-lambda-${terraform.workspace}"
-  retention_in_days = 14
+  retention_in_days = 14 
 }
 
-resource "aws_cloudwatch_log_group" "lambda_crop" {
+resource "aws_cloudwatch_log_group" "lambda_crop" { 
   name              = "/aws/lambda/crop-lambda-${terraform.workspace}"
   retention_in_days = 14
 }
 
-resource "aws_cloudwatch_log_group" "apigw" {
+resource "aws_cloudwatch_log_group" "apigw" { 
   name              = "/aws/apigateway/image-api-${terraform.workspace}"
   retention_in_days = 14
 }
 
-resource "aws_cloudwatch_metric_alarm" "dlq_alarm" {
-  alarm_name          = "dlq-messages-alarm-${terraform.workspace}"
+resource "aws_cloudwatch_metric_alarm" "dlq_alarm" { 
+  # Notifica desviaciones en el procesamiento asíncrono requiriendo intervención manual inmediata.
+  alarm_name          = "dlq-messages-alarm-${terraform.workspace}" 
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "ApproximateNumberOfMessagesVisible"
@@ -89,7 +93,6 @@ resource "aws_cloudwatch_metric_alarm" "dlq_alarm" {
   }
 }
 
-# Permiso para que S3 escriba en SQS
 resource "aws_sqs_queue_policy" "s3_to_sqs" {
   queue_url = aws_sqs_queue.main.id
   policy = jsonencode({
@@ -106,8 +109,8 @@ resource "aws_sqs_queue_policy" "s3_to_sqs" {
   })
 }
 
-# Notificación de S3 a SQS
 resource "aws_s3_bucket_notification" "bucket_notification" {
+  # Desacopla la ingesta delegando eventos a SQS de forma exclusiva para el prefijo de origen.
   bucket = aws_s3_bucket.images.id
   queue {
     queue_arn     = aws_sqs_queue.main.arn
